@@ -1,0 +1,38 @@
+mcp:
+  tools:
+    - approval-decision:
+        route:
+          id: "approval-decision"
+        description: "Approves or rejects transaction based on risk level"
+        properties:
+          - name: riskLevel
+            type: string
+            description: "The classification of risk (e.g., 'LOW', 'MEDIUM', 'HIGH') which determines if a transaction is AUTO-APPROVED, needs MANUAL_REVIEW, or is REJECTED."
+            required: true
+            mapping:
+              type: header
+              name: riskLevel
+    - risk-classifier:
+        route:
+          id: "risk-classifier"
+        description: "Determines transaction risk level based on amount"
+        properties:
+          - name: amount
+            type: number
+            description: "The total financial value of the transaction used to calculate the risk category; amounts over 5000 are HIGH risk, and over 1000 are MEDIUM risk."
+            required: true
+            mapping:
+              type: header
+              name: amount
+    - get-currency:
+        route:
+          id: "get-currency"
+        description: "Fetches currency for a given wallet ID"
+        properties:
+          - name: walletId
+            type: string
+            description: "The wallet ID to fetch currency for"
+            required: true
+            mapping:
+              type: header
+              name: walletId

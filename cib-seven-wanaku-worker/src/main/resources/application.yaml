@@ -1,0 +1,74 @@
+# CIB Seven Wanaku Worker Configuration
+
+server.port: 8083
+
+# CIB Seven Platform Configuration
+camunda.bpm.client:
+  base-url: http://localhost:8085/engine-rest # The URL pointing to the CIB Seven Platform REST API
+  async-response-timeout: 1000 # Defines the maximum duration of the long-polling request
+  lock-duration: 20000 # Lock duration for external tasks (in milliseconds)
+  disable-backoff-strategy: true
+  worker-id: wanaku-worker1 # Identifies the worker towards the Engine
+
+# Wanaku Configuration
+wanaku:
+  enabled: true # Set to false to disable the entire Wanaku worker
+  base-url: http://localhost:8080 # Base URL of the Wanaku MCP Router
+  mcp-endpoint: /mcp/ # Streamable HTTP endpoint path on the Wanaku MCP Router (must end with /)
+  timeout-seconds: 90 # Request timeout when communicating with the MCP server
+  topic: wanaku-tool-execute # Camunda external task topic for tool execution
+  tools-fetch-topic: wanaku-tools-fetch # Camunda external task topic for fetching the tool list
+  tools-fetch-enabled: true # Set to false to disable the tools-fetch topic independently
+  retries: 3 # Camunda external task retry attempts on transient failure (0 = no retries)
+  retry-interval-ms: 5000 # Milliseconds to wait between retry attempts
+  keycloak:
+    enabled: true # Set to true to enable automatic Keycloak OAuth 2.0 token management
+    client-id: wanaku-service # OAuth 2.0 client ID registered in the realm
+    client-secret: XXX # OAuth 2.0 client secret
+    token-endpoint: http://localhost:8543/realms/wanaku/protocol/openid-connect/token # Explicit Keycloak token URL; when blank, auto-resolved from wanaku.base-url via OIDC Discovery
+
+# Logging Configuration
+logging:
+  level:
+    org.cibseven.bpm.client: INFO
+    org.cibseven.worker: INFO
+    io.modelcontextprotocol: INFO
+
+# Spring Configuration
+spring:
+  application:
+    name: cib-seven-wanaku-worker
+
+---
+# Production Profile Example
+spring:
+  config:
+    activate:
+      on-profile: production
+
+camunda.bpm.client:
+  base-url: ${CIB_SEVEN_BASE_URL:http://cib-seven-platform:8080/engine-rest}
+  worker-id: ${WORKER_ID:wanaku-worker-prod}
+  lock-duration: ${LOCK_DURATION:30000}
+
+wanaku:
+  enabled: ${WANAKU_ENABLED:true}
+  base-url: ${WANAKU_BASE_URL:http://wanaku:8080}
+  mcp-endpoint: ${WANAKU_MCP_ENDPOINT:/mcp/}
+  timeout-seconds: ${WANAKU_TIMEOUT_SECONDS:30}
+  topic: ${WANAKU_TOPIC:wanaku-tool-execute}
+  tools-fetch-topic: ${WANAKU_TOOLS_FETCH_TOPIC:wanaku-tools-fetch}
+  tools-fetch-enabled: ${WANAKU_TOOLS_FETCH_ENABLED:true}
+  retries: ${WANAKU_RETRIES:3}
+  retry-interval-ms: ${WANAKU_RETRY_INTERVAL_MS:5000}
+  keycloak:
+    enabled: ${WANAKU_KEYCLOAK_ENABLED:false}
+    client-id: ${WANAKU_KEYCLOAK_CLIENT_ID:wanaku-worker}
+    client-secret: ${WANAKU_KEYCLOAK_CLIENT_SECRET:}
+    token-endpoint: ${WANAKU_KEYCLOAK_TOKEN_ENDPOINT:} # Optional: explicit token URL; when blank, auto-resolved from wanaku.base-url
+
+logging:
+  level:
+    org.cibseven.bpm.client: INFO
+    org.cibseven.worker: INFO
+    io.modelcontextprotocol: WARN

@@ -1,0 +1,53 @@
+- route:
+    id: approval-decision
+    from:
+      uri: "direct:approval-decision"
+      steps:
+        - log:
+            message: "Making approval decision based on risk level: ${header.riskLevel}"
+        - choice:
+            when:
+              - simple: "${header.riskLevel} == 'HIGH'"
+                steps:
+                  - setBody:
+                      simple: "REJECTED"
+              - simple: "${header.riskLevel} == 'MEDIUM'"
+                steps:
+                  - setBody:
+                      simple: "MANUAL_REVIEW"
+            otherwise:
+              steps:
+                - setBody:
+                    simple: "APPROVED"
+
+- route:
+    id: get-currency
+    from:
+      uri: "direct:get-currency"
+      steps:
+        - log:
+            message: "Fetching currency for wallet ID: ${header.walletId}"
+        - setBody:
+            simple: "Wallet ID: ${header.walletId} | Currency: Saudi Riyal"
+
+- route:
+    id: risk-classifier
+    from:
+      uri: "direct:risk-classifier"
+      steps:
+        - log:
+            message: "Classifying risk for amount: ${header.amount}"
+        - choice:
+            when:
+              - simple: "${header.amount} > 5000"
+                steps:
+                  - setBody:
+                      simple: "HIGH"
+              - simple: "${header.amount} > 1000"
+                steps:
+                  - setBody:
+                      simple: "MEDIUM"
+            otherwise:
+              steps:
+                - setBody:
+                    simple: "LOW"

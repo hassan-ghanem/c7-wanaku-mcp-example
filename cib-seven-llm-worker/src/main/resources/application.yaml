@@ -1,0 +1,74 @@
+# CIB Seven LLM Worker Configuration
+
+server.port: 8082
+
+# CIB Seven Platform Configuration
+camunda.bpm.client:
+  base-url: http://localhost:8085/engine-rest # The URL pointing to the CIB Seven Platform REST API
+  async-response-timeout: 1000 # Defines the maximum duration of the long-polling request
+  lock-duration: 20000 # Lock duration for external tasks (in milliseconds)
+  disable-backoff-strategy: true
+  worker-id: llm-worker1 # Identifies the worker towards the Engine
+
+# LLM Configuration
+llm:
+  enabled: true # Set to false to disable the LLM worker
+  provider: openai # ollama | openai | gemini
+  model-name: gpt-4o-mini # Model to use (e.g., llama3.2, gpt-4o-mini, gemini-2.5-flash)
+  base-url: https://api.openai.com/v1 # Ollama: http://localhost:11434, OpenAI: https://api.openai.com/v1, Gemini: https://generativelanguage.googleapis.com
+  api-key: "XXX" # API key (required for OpenAI and Gemini, leave empty for Ollama)
+  temperature: 0.0 # Sampling temperature (0.0 = deterministic, higher = more creative)
+  timeout-seconds: 120 # HTTP request timeout when calling LLM provider
+  topic: llm-decision # Camunda external task topic to subscribe to
+  retries: 3 # Camunda external task retry attempts on transient failure (0 = no retries)
+  retry-interval-ms: 10000 # Milliseconds to wait between retry attempts (longer for LLM cold-start)
+
+# Apache Camel Configuration
+camel:
+  springboot:
+    name: CibSevenLlmWorker
+
+# Logging Configuration
+logging:
+  level:
+    org.cibseven.bpm.client: DEBUG
+    org.apache.camel: INFO
+    org.cibseven.worker: DEBUG
+    dev.langchain4j: INFO
+
+# Spring Configuration
+spring:
+  application:
+    name: cib-seven-llm-worker
+
+---
+# Production Profile Example
+spring:
+  config:
+    activate:
+      on-profile: production
+
+camunda.bpm.client:
+  base-url: ${CIB_SEVEN_BASE_URL:http://cib-seven-platform:8080/engine-rest}
+  worker-id: ${WORKER_ID:llm-worker-prod}
+  lock-duration: ${LOCK_DURATION:30000}
+
+llm:
+  enabled: ${LLM_ENABLED:true}
+  provider: ${LLM_PROVIDER:ollama}
+  model-name: ${LLM_MODEL_NAME:llama3.2}
+  base-url: ${LLM_BASE_URL:http://ollama:11434}
+  api-key: ${LLM_API_KEY:}
+  temperature: ${LLM_TEMPERATURE:0.0}
+  timeout-seconds: ${LLM_TIMEOUT_SECONDS:120}
+  topic: ${LLM_TOPIC:llm-decision}
+  retries: ${LLM_RETRIES:3}
+  retry-interval-ms: ${LLM_RETRY_INTERVAL_MS:10000}
+
+logging:
+  level:
+    org.cibseven.bpm.client: INFO
+    org.apache.camel: WARN
+    org.cibseven.worker: INFO
+    dev.langchain4j: WARN
+
