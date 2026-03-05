@@ -223,7 +223,3 @@ The clip shows:
 - LLM decision loop
 - Tool invocation through Wanaku
 - Final response generation
-
----
-
-> This README can also be expanded with a sequence diagram, a BPMN image, a step-by-step run guide, or a prompt example used by the LLM.
