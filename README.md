@@ -1,5 +1,4 @@
-```markdown
-# Camunda 7 + Wanaku MCP + Apache Camel + LLM  
+# Camunda 7 + Wanaku MCP + Apache Camel + LLM
 ### Agentic Tool-Calling with BPMN Orchestration
 
 This repository demonstrates how to orchestrate an **LLM tool-calling agent** using **Camunda Platform 7 (CIB Seven)**, **Wanaku MCP Router**, and **Apache Camel**.
@@ -10,16 +9,15 @@ BPMN provides **full process traceability, retries, incidents, and monitoring**,
 
 ---
 
-# Architecture Overview
+## Architecture Overview
 
 The system combines BPMN orchestration with an LLM decision loop.
 
 ```
-
 ┌───────────────────────────────────────────────────────────────┐
 │                       Camunda BPMN Process                    │
 │                                                               │
-│  [Fetch Tools] ──► [LLM Decision] ──► gateway                 │
+│  [Fetch Tools] ──► [LLM Decision] ──► gateway                │
 │   wanaku-tools-fetch     llm-decision     requiresTool?       │
 │                                              │ yes   │ no     │
 │                                       [Execute Tool]  │       │
@@ -27,14 +25,13 @@ The system combines BPMN orchestration with an LLM decision loop.
 │                                              │        │       │
 │                                   loop back to LLM    │       │
 │                                              │        │       │
-│                                          Final Answer │       │
+│                                          Final Answer ◄       │
 └───────────────────────────────────────────────────────────────┘
-
-````
+```
 
 ---
 
-# Architecture Components
+## Architecture Components
 
 ### BPMN (Camunda Platform 7)
 
@@ -65,7 +62,7 @@ Output example:
     "targetCurrency": "USD"
   }
 }
-````
+```
 
 The BPMN gateway checks `requiresTool` to decide whether to execute a tool or finish the process.
 
@@ -85,26 +82,24 @@ Apache Camel handles **enterprise routing and system integration**.
 
 Camel routes can:
 
-* call APIs
-* access databases
-* integrate with enterprise systems
-* implement business logic
+- Call APIs
+- Access databases
+- Integrate with enterprise systems
+- Implement business logic
 
 Wanaku exposes these Camel routes as **MCP tools** that the LLM can call.
 
 ---
 
-# External Task Workers
+## External Task Workers
 
 Two workers are used in the example.
 
 ---
 
-## Wanaku Worker
+### Wanaku Worker
 
 Handles tool discovery and execution.
-
-### Topics
 
 | Topic                 | Handler                     | Purpose                       |
 | --------------------- | --------------------------- | ----------------------------- |
@@ -113,7 +108,7 @@ Handles tool discovery and execution.
 
 ---
 
-## LLM Worker
+### LLM Worker
 
 Handles the reasoning step.
 
@@ -123,14 +118,14 @@ Handles the reasoning step.
 
 Responsibilities:
 
-* Reads the user request
-* Reads available tools
-* Decides whether a tool is required
-* Returns the decision variables to BPMN
+- Reads the user request
+- Reads available tools
+- Decides whether a tool is required
+- Returns the decision variables to BPMN
 
 ---
 
-# Variable Flow
+## Variable Flow
 
 Main variables used during execution.
 
@@ -146,13 +141,11 @@ Main variables used during execution.
 
 ---
 
-# Execution Loop
+## Execution Loop
 
 1. BPMN fetches available tools from Wanaku.
 2. LLM evaluates the request.
-3. If a tool is required:
-
-   * BPMN triggers the Wanaku worker.
+3. If a tool is required, BPMN triggers the Wanaku worker.
 4. Wanaku executes the selected MCP tool.
 5. Tool result is returned to the process.
 6. BPMN loops back to the LLM.
@@ -160,45 +153,23 @@ Main variables used during execution.
 
 ---
 
-# Example Tools
-
-The example includes tools exposed through Wanaku.
+## Example Tools
 
 ### HTTP Tool
 
-Defined in:
-
-```
-currency.json
-```
-
-Example:
-
-```
-currency-rate
-```
-
-Used for retrieving currency information.
-
----
+Defined in `currency.json`. Used for retrieving currency information (e.g., `currency-rate`).
 
 ### Apache Camel Tools
 
-Defined in:
-
-```
-demo.rules.yaml
-```
-
-These routes expose enterprise integrations as MCP tools.
+Defined in `demo.rules.yaml`. These routes expose enterprise integrations as MCP tools.
 
 ---
 
-# Running the Example
+## Running the Example
 
 1. Start Camunda Platform 7
 2. Start Wanaku MCP Router
-3. Start the two workers
+3. Start the two workers:
 
 ```
 cib-seven-llm-worker
@@ -210,22 +181,22 @@ cib-seven-wanaku-worker
 
 ---
 
-# Tested Environment
+## Tested Environment
 
 This example has been tested with:
 
-* **Wanaku MCP Router**
-* **Official Camel Integration Capability**
-* **Version 0.0.9**
+- **Wanaku MCP Router**
+- **Official Camel Integration Capability**
+- **Version 0.0.9**
 
 The following tools were added to the Wanaku toolset:
 
-* HTTP currency tool defined in **`currency.json`**
-* Camel tools defined in **`demo.rules.yaml`**
+- HTTP currency tool defined in `currency.json`
+- Camel tools defined in `demo.rules.yaml`
 
 ---
 
-# Repository Structure
+## Repository Structure
 
 ```
 bpmn/
@@ -242,25 +213,17 @@ wanaku/
 
 ---
 
-# Demonstration
+## Demonstration
 
 A **short silent clip** demonstrating the example execution is attached to this repository.
 
 The clip shows:
 
-* BPMN process execution
-* LLM decision loop
-* Tool invocation through Wanaku
-* Final response generation
+- BPMN process execution
+- LLM decision loop
+- Tool invocation through Wanaku
+- Final response generation
 
 ---
 
-```
-
-If desired, this README can also be expanded with:
-
-- a **sequence diagram**
-- a **BPMN image**
-- a **step-by-step run guide**
-- a **prompt example** used by the LLM.
-```
+> This README can also be expanded with a sequence diagram, a BPMN image, a step-by-step run guide, or a prompt example used by the LLM.
