@@ -10,7 +10,6 @@ import org.cibseven.worker.model.ToolMetadata;
 import org.cibseven.worker.service.WanakuToolRegistryService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
@@ -53,23 +52,32 @@ public class WanakuToolsFetchHandler {
 
     private static final Logger logger = LoggerFactory.getLogger(WanakuToolsFetchHandler.class);
 
-    @Value("${camunda.bpm.client.base-url}")
-    private String baseUrl;
+    private final String baseUrl;
 
-    @Value("${camunda.bpm.client.async-response-timeout}")
-    private int asyncResponseTimeout;
+    private final int asyncResponseTimeout;
 
-    @Value("${camunda.bpm.client.lock-duration}")
-    private int lockDuration;
+    private final int lockDuration;
 
-    @Autowired
-    private WanakuProperties wanakuProperties;
+    private final WanakuProperties wanakuProperties;
 
-    @Autowired
-    private WanakuToolRegistryService toolRegistryService;
+    private final WanakuToolRegistryService toolRegistryService;
 
-    @Autowired
-    private ObjectMapper objectMapper;
+    private final ObjectMapper objectMapper;
+
+    public WanakuToolsFetchHandler(
+            @Value("${camunda.bpm.client.base-url}") String baseUrl,
+            @Value("${camunda.bpm.client.async-response-timeout}") int asyncResponseTimeout,
+            @Value("${camunda.bpm.client.lock-duration}") int lockDuration,
+            WanakuProperties wanakuProperties,
+            WanakuToolRegistryService toolRegistryService,
+            ObjectMapper objectMapper) {
+        this.baseUrl = baseUrl;
+        this.asyncResponseTimeout = asyncResponseTimeout;
+        this.lockDuration = lockDuration;
+        this.wanakuProperties = wanakuProperties;
+        this.toolRegistryService = toolRegistryService;
+        this.objectMapper = objectMapper;
+    }
 
     /**
      * Subscribe to the tools-fetch external task topic after the application is fully ready.

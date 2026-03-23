@@ -9,7 +9,6 @@ import org.cibseven.worker.model.ToolMetadata;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import jakarta.annotation.PreDestroy;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
@@ -52,21 +51,28 @@ public class WanakuToolRegistryService {
      */
     private static final long INITIAL_TOKEN_WAIT_SECONDS = 60L;
 
-    @Autowired
-    private WanakuProperties wanakuProperties;
+    private final WanakuProperties wanakuProperties;
 
-    @Autowired
-    private McpSyncClient mcpClient;
+    private final McpSyncClient mcpClient;
 
-    @Autowired
-    private ObjectMapper objectMapper;
+    private final ObjectMapper objectMapper;
 
     /**
      * Keycloak token service — present only when
      * {@code wanaku.keycloak.enabled=true}.
      */
-    @Autowired
-    private Optional<KeycloakTokenService> keycloakTokenService;
+    private final Optional<KeycloakTokenService> keycloakTokenService;
+
+    public WanakuToolRegistryService(
+            WanakuProperties wanakuProperties,
+            McpSyncClient mcpClient,
+            ObjectMapper objectMapper,
+            Optional<KeycloakTokenService> keycloakTokenService) {
+        this.wanakuProperties = wanakuProperties;
+        this.mcpClient = mcpClient;
+        this.objectMapper = objectMapper;
+        this.keycloakTokenService = keycloakTokenService;
+    }
 
     /** Cached list of available tools. */
     private volatile List<ToolMetadata> cachedTools = new ArrayList<>();

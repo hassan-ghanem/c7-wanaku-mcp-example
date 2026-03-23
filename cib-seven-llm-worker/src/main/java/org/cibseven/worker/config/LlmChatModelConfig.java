@@ -6,7 +6,6 @@ import dev.langchain4j.model.ollama.OllamaChatModel;
 import dev.langchain4j.model.openai.OpenAiChatModel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -31,8 +30,11 @@ public class LlmChatModelConfig {
 
     private static final Logger logger = LoggerFactory.getLogger(LlmChatModelConfig.class);
 
-    @Autowired
-    private LlmProperties llmProperties;
+    private final LlmProperties llmProperties;
+
+    public LlmChatModelConfig(LlmProperties llmProperties) {
+        this.llmProperties = llmProperties;
+    }
 
     /**
      * Creates a {@link ChatModel} bean based on the configured provider.

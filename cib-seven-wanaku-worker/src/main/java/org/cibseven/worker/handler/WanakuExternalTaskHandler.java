@@ -12,7 +12,6 @@ import org.cibseven.worker.config.WanakuProperties;
 import org.cibseven.worker.service.WanakuToolRegistryService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
@@ -75,23 +74,32 @@ public class WanakuExternalTaskHandler {
         return t;
     });
 
-    @Value("${camunda.bpm.client.base-url}")
-    private String baseUrl;
+    private final String baseUrl;
 
-    @Value("${camunda.bpm.client.async-response-timeout}")
-    private int asyncResponseTimeout;
+    private final int asyncResponseTimeout;
 
-    @Value("${camunda.bpm.client.lock-duration}")
-    private int lockDuration;
+    private final int lockDuration;
 
-    @Autowired
-    private WanakuProperties wanakuProperties;
+    private final WanakuProperties wanakuProperties;
 
-    @Autowired
-    private McpSyncClient mcpClient;
+    private final McpSyncClient mcpClient;
 
-    @Autowired
-    private WanakuToolRegistryService toolRegistryService;
+    private final WanakuToolRegistryService toolRegistryService;
+
+    public WanakuExternalTaskHandler(
+            @Value("${camunda.bpm.client.base-url}") String baseUrl,
+            @Value("${camunda.bpm.client.async-response-timeout}") int asyncResponseTimeout,
+            @Value("${camunda.bpm.client.lock-duration}") int lockDuration,
+            WanakuProperties wanakuProperties,
+            McpSyncClient mcpClient,
+            WanakuToolRegistryService toolRegistryService) {
+        this.baseUrl = baseUrl;
+        this.asyncResponseTimeout = asyncResponseTimeout;
+        this.lockDuration = lockDuration;
+        this.wanakuProperties = wanakuProperties;
+        this.mcpClient = mcpClient;
+        this.toolRegistryService = toolRegistryService;
+    }
 
     /**
      * Subscribe to external tasks after the application is fully ready.

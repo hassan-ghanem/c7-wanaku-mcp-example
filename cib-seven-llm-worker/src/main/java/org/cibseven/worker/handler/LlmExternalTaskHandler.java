@@ -14,7 +14,6 @@ import org.cibseven.worker.model.AgentDecision;
 import org.cibseven.worker.model.ToolMetadata;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
@@ -67,23 +66,32 @@ public class LlmExternalTaskHandler {
 
     private static final Logger logger = LoggerFactory.getLogger(LlmExternalTaskHandler.class);
 
-    @Value("${camunda.bpm.client.base-url}")
-    private String baseUrl;
+    private final String baseUrl;
 
-    @Value("${camunda.bpm.client.async-response-timeout}")
-    private int asyncResponseTimeout;
+    private final int asyncResponseTimeout;
 
-    @Value("${camunda.bpm.client.lock-duration}")
-    private int lockDuration;
+    private final int lockDuration;
 
-    @Autowired
-    private LlmProperties llmProperties;
+    private final LlmProperties llmProperties;
 
-    @Autowired
-    private ProducerTemplate producerTemplate;
+    private final ProducerTemplate producerTemplate;
 
-    @Autowired
-    private ObjectMapper objectMapper;
+    private final ObjectMapper objectMapper;
+
+    public LlmExternalTaskHandler(
+            @Value("${camunda.bpm.client.base-url}") String baseUrl,
+            @Value("${camunda.bpm.client.async-response-timeout}") int asyncResponseTimeout,
+            @Value("${camunda.bpm.client.lock-duration}") int lockDuration,
+            LlmProperties llmProperties,
+            ProducerTemplate producerTemplate,
+            ObjectMapper objectMapper) {
+        this.baseUrl = baseUrl;
+        this.asyncResponseTimeout = asyncResponseTimeout;
+        this.lockDuration = lockDuration;
+        this.llmProperties = llmProperties;
+        this.producerTemplate = producerTemplate;
+        this.objectMapper = objectMapper;
+    }
 
     /**
      * Subscribe to external tasks after the application is fully ready.
