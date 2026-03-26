@@ -1,0 +1,24 @@
+camunda:
+  connector:
+    agenticai:
+      mcp:
+        remote-client:
+          enabled: false
+        client:
+          enabled: true
+          clients:
+            wanaku-mcp:
+              type: http
+              http:
+                url: http://localhost:8080/mcp/
+                authentication:
+                  type: oauth
+                  oauth:
+                    oauth-token-endpoint: http://localhost:8543/realms/wanaku/protocol/openid-connect/token
+                    client-id: wanaku-service
+                    client-secret: XXXXX
+                    client-authentication: credentials-body
+      aiagent:
+        enabled: false
+      ad-hoc-tools-schema-resolver:
+        enabled: false
