@@ -14,7 +14,7 @@ camunda.bpm.client:
 wanaku:
   enabled: true # Set to false to disable the entire Wanaku worker
   base-url: http://localhost:8080 # Base URL of the Wanaku MCP Router
-  mcp-endpoint: /mcp/ # Streamable HTTP endpoint path on the Wanaku MCP Router (must end with /)
+  mcp-endpoint: /mcp/ # Streamable HTTP endpoint path on the Wanaku MCP Router (must end with /). To enable namespaces, include the namespace in the path (e.g., /ns-1/mcp/)
   timeout-seconds: 90 # Request timeout when communicating with the MCP server
   topic: wanaku-tool-execute # Camunda external task topic for tool execution
   tools-fetch-topic: wanaku-tools-fetch # Camunda external task topic for fetching the tool list

@@ -381,7 +381,7 @@ After `wanaku-tool-execute` completes, a script task or execution listener shoul
 |---|---|---|---|
 | `wanaku.enabled` | `true` | `WANAKU_ENABLED` | Disable both handlers and the MCP client |
 | `wanaku.base-url` | `http://localhost:8080` | `WANAKU_BASE_URL` | Wanaku MCP Router base URL |
-| `wanaku.mcp-endpoint` | `/mcp/` | `WANAKU_MCP_ENDPOINT` | Streamable HTTP endpoint path (appended to `base-url`) |
+| `wanaku.mcp-endpoint` | `/mcp/` | `WANAKU_MCP_ENDPOINT` | Streamable HTTP endpoint path (appended to `base-url`). To enable [namespaces](https://wanaku.ai/docs/camel-integration-capability/camel-integration-capability-0.0.9/docs/usage.html#route-exposure-rules), include the namespace in the path (e.g., `/ns-1/mcp/`) |
 | `wanaku.timeout-seconds` | `30` | `WANAKU_TIMEOUT_SECONDS` | MCP request timeout |
 | `wanaku.topic` | `wanaku-tool-execute` | `WANAKU_TOPIC` | Topic for `WanakuExternalTaskHandler` |
 | `wanaku.tools-fetch-topic` | `wanaku-tools-fetch` | `WANAKU_TOOLS_FETCH_TOPIC` | Topic for `WanakuToolsFetchHandler` |

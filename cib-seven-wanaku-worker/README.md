@@ -33,7 +33,7 @@ See `src/main/resources/application.yaml` for configuration options.
 
 Key settings:
 - `wanaku.base-url`: Wanaku MCP Router base URL (e.g., `http://localhost:8080`)
-- `wanaku.mcp-endpoint`: Streamable HTTP endpoint path (default: `/mcp/`)
+- `wanaku.mcp-endpoint`: Streamable HTTP endpoint path (default: `/mcp/`). To enable [namespaces](https://wanaku.ai/docs/camel-integration-capability/camel-integration-capability-0.0.9/docs/usage.html#route-exposure-rules), include the namespace in the path (e.g., `/ns-1/mcp/`).
 - `wanaku.timeout-seconds`: MCP request timeout
 
 ## Running Locally

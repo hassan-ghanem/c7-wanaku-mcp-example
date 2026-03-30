@@ -45,6 +45,7 @@ public class WanakuProperties {
 
     /**
      * Streamable HTTP endpoint path on the Wanaku MCP Router (e.g. {@code /mcp/}).
+     * To enable namespaces, include the namespace in the path (e.g., {@code /ns-1/mcp/}).
      * Passed directly to
      * {@link io.modelcontextprotocol.client.transport.HttpClientStreamableHttpTransport.Builder#endpoint}.
      */
