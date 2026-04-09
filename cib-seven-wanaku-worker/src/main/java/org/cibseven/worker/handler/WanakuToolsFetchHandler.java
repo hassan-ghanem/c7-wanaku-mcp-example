@@ -119,8 +119,16 @@ public class WanakuToolsFetchHandler {
         try {
             logger.info("Processing tools-fetch external task: {}", externalTask.getId());
 
-            // Read the cached tool list — no network call, instant
+            // Read the cached tool list — no network call, instant.
+            // If the cache is still empty (e.g. this task arrived before the background
+            // refresh thread finished its first Keycloak-authenticated fetch), trigger a
+            // synchronous refresh so we do not return an empty list on the very first call.
             List<ToolMetadata> tools = toolRegistryService.getAvailableTools();
+            if (tools.isEmpty()) {
+                logger.info("Tool cache is empty on first fetch — triggering synchronous refresh");
+                toolRegistryService.refreshToolRegistry();
+                tools = toolRegistryService.getAvailableTools();
+            }
 
             logger.debug("Serialising {} tool(s) into availableTools process variable", tools.size());
 
