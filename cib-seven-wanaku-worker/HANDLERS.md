@@ -28,10 +28,12 @@ The two workers together implement a **ReAct-style agentic loop** inside a Camun
 │  [Fetch Tools]──────► [LLM Decision]──────► gateway                  │
 │  wanaku-tools-fetch    llm-decision        requiresTool?              │
 │                                               │ yes          │ no     │
-│                                         [Execute Tool]   [End/Answer] │
-│                                         wanaku-tool-execute           │
-│                                               │                       │
-│                                     loop back to [LLM Decision]       │
+│       ┌── Multi-Instance Service Task ──┐     │              │        │
+│       │ ≡ [Execute Tool Parallel]     │ ◄─────┘      [End/Answer]     │
+│       │   wanaku-tool-execute         ├───┐                   │        │
+│       └───────────────────────────────┘   │                   │        │
+│                │                          │                   │        │
+│      loop back to [LLM Decision] ◄────────┘                   │        │
 └───────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -147,17 +149,16 @@ Calls a Large Language Model (Ollama or OpenAI) with the user's request, convers
 | Variable | Java type | When set | Description |
 |---|---|---|---|
 | `requiresTool` | `Boolean` | Always | `true` if the LLM chose a tool; `false` if it produced a final answer. Drive the BPMN exclusive gateway on this variable. |
-| `toolName` | `String` | `requiresTool = true` | Exact name of the tool from `availableTools` that should be called next. `null` when no tool is needed. |
-| `toolArgs` | `Map<String, Object>` | `requiresTool = true` | Key/value arguments for the tool, matching the tool's `inputSchema`. `null` when no tool is needed. |
+| `toolCalls` | `List<Map>` | `requiresTool = true` | List of tool calls to execute in parallel, where each contains `callId`, `toolName`, and `toolArgs`. `null` when no tool is needed. |
 | `finalAnswer` | `String` | `requiresTool = false` | The LLM's complete response text for the user. `null` when a tool is needed. |
 
 **`AgentDecision` JSON contract (LLM must produce one of these two shapes):**
 ```json
-// Tool call
-{ "requiresTool": true,  "toolName": "searchDatabase", "toolArgs": {"query": "..."}, "finalAnswer": null }
+// Tool call(s)
+{ "requiresTool": true,  "toolCalls": [{"callId": "c1", "toolName": "searchDatabase", "toolArgs": {"query": "..."}}], "finalAnswer": null }
 
 // Direct answer
-{ "requiresTool": false, "toolName": null, "toolArgs": null, "finalAnswer": "The answer is 42." }
+{ "requiresTool": false, "toolCalls": null, "finalAnswer": "The answer is 42." }
 ```
 
 The handler extracts the first `{…}` block from the raw LLM text before parsing, so models that prepend or append prose do not break JSON deserialisation.
@@ -221,6 +222,7 @@ Executes a single MCP tool call against the Wanaku MCP Router. Takes a tool name
 
 | Variable | Java type | Required | Description |
 |---|---|---|---|
+| `callId` | `String` | **Required** | Sanitised unique identifier for this tool call iteration. Used as suffix for output variables. |
 | `toolName` | `String` | **Required** | Name of the MCP tool to invoke. Must match a tool registered in Wanaku. An empty/null value causes immediate task failure. |
 | `toolArgs` | `Map<String, Object>` | Optional | Key/value arguments passed as-is to the tool. If `null` the handler substitutes an empty map — tools with no required parameters accept this. |
 
@@ -228,8 +230,7 @@ Executes a single MCP tool call against the Wanaku MCP Router. Takes a tool name
 
 | Variable | Java type | When set | Description |
 |---|---|---|---|
-| `toolResult` | `String` | Success path | Concatenated text from all `TextContent` items in the MCP `CallToolResult`. Empty string if the tool returns no text content. |
-| `toolError` | `String` | Tool-level error | Error text extracted from the `CallToolResult` when `isError` is `true`. `null` on success. The task still _completes_ (no Camunda incident), so the BPMN process can branch on `toolError != null`. |
+| `toolResult_<callId>` | `String` | Success path | Concatenated text from all `TextContent` items in the MCP `CallToolResult`. Empty string if the tool returns no text content. |
 
 ### Role in the Overall System
 
@@ -281,16 +282,18 @@ Service Task: "Fetch Available Tools"
 Service Task: "LLM Decision"   ◄──────────────────────────────────────┐
   topic = llm-decision                                                 │
   in:   userRequest, conversationHistory, availableTools               │
-  out:  requiresTool, toolName, toolArgs, finalAnswer                  │
+  out:  requiresTool, toolCalls, finalAnswer                           │
   │                                                                    │
   ▼                                                                    │
 Exclusive Gateway: requiresTool?                                       │
-  ├── true  ──►  Service Task: "Execute Tool"                          │
-  │              topic = wanaku-tool-execute                           │
-  │              in:   toolName, toolArgs                              │
-  │              out:  toolResult, toolError                           │
+  ├── true  ──►  Multi-Instance Service Task (collection: toolCalls, element: toolCall)
+  │              │
+  │              └──► Service Task: "Execute Tool"
+  │                   topic = wanaku-tool-execute
+  │                   in:   callId = toolCall.callId, toolName = toolCall.toolName, toolArgs = toolCall.toolArgs
+  │                   out:  toolResult_<callId>
   │              │                                                     │
-  │        Script Task: append toolResult to conversationHistory ──────┘
+  │        Script Task: append all toolResult_<callId> to conversationHistory ──┘
   │
   └── false ──►  End Event (deliver finalAnswer to user)
 ```
@@ -300,8 +303,8 @@ Exclusive Gateway: requiresTool?                                       │
 | Service Task | Required input variables | Output variables to map |
 |---|---|---|
 | `wanaku-tools-fetch` | *(none)* | `availableTools` |
-| `llm-decision` | `userRequest` | `requiresTool`, `toolName`, `toolArgs`, `finalAnswer` |
-| `wanaku-tool-execute` | `toolName` | `toolResult`, `toolError` |
+| `llm-decision` | `userRequest` | `requiresTool`, `toolCalls`, `finalAnswer` |
+| `wanaku-tool-execute` | `callId`, `toolName` | `toolResult_<callId>` |
 
 ---
 
@@ -335,12 +338,10 @@ externalTaskService.handleFailure(task, message, stackTrace, remaining, interval
 │  wanaku-tools-fetch writes ──► availableTools ──► llm-decision reads        │
 │                                                                              │
 │  llm-decision writes ──► requiresTool ──► gateway condition                 │
-│                     ──► toolName      ──► wanaku-tool-execute reads          │
-│                     ──► toolArgs      ──► wanaku-tool-execute reads          │
+│                     ──► toolCalls     ──► MI Service Task config             │
 │                     ──► finalAnswer   ──► End Event / user response          │
 │                                                                              │
-│  wanaku-tool-execute writes ──► toolResult ──► append to conversationHistory │
-│                             ──► toolError  ──► optional error branch         │
+│  wanaku-tool-execute writes ──► toolResult_<callId> ──► append to history    │
 └──────────────────────────────────────────────────────────────────────────────┘
 ```
 

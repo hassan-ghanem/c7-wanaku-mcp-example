@@ -33,11 +33,10 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * {@code wanaku.topic}).
  *
  * <p>
- * The worker receives tool execution requests from Camunda (typically from the
- * LLM worker),
- * calls Wanaku's MCP endpoint via the MCP Java SDK's Streamable HTTP transport,
- * and returns
- * the result.
+ * Each instance of this handler executes ONE tool call from the
+ * {@code toolCalls} list produced by {@code LlmExternalTaskHandler}.
+ * It is always run inside a BPMN Multi-Instance Service Task (parallel,
+ * not sequential), so multiple instances may execute concurrently.
  * </p>
  *
  * <p>
@@ -45,18 +44,28 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * {@code application.yaml}.
  * </p>
  *
- * <h3>Input Variables (from Camunda process)</h3>
+ * <h3>Input Variables (from BPMN multi-instance element variable mapping)</h3>
  * <ul>
- * <li>{@code toolName} (String, required): Name of the tool to execute</li>
- * <li>{@code toolArgs} (Map, required): Arguments to pass to the tool</li>
+ * <li>{@code callId}  (String, required): Sanitised unique identifier for this
+ *     tool call within the current iteration. Used as the suffix of the output
+ *     variable names.</li>
+ * <li>{@code toolName} (String, required): Name of the tool to execute.</li>
+ * <li>{@code toolArgs} (Map, optional): Arguments to pass to the tool.</li>
  * </ul>
  *
- * <h3>Output Variables (to Camunda process)</h3>
+ * <h3>Output Variables (written to process scope per instance)</h3>
  * <ul>
- * <li>{@code toolResult} (String): Result from the tool execution</li>
- * <li>{@code toolError} (String, optional): Error message if execution
- * failed</li>
+ * <li>{@code toolResult_<callId>} (String): Concatenated text result from the
+ *     MCP tool. Empty string if the tool returns no text content.</li>
  * </ul>
+ *
+ * <h3>Error Behaviour</h3>
+ * <p>A tool-level MCP error ({@code CallToolResult.isError() == true}) is
+ * treated the same as a transport exception: {@code handleFailure()} is called,
+ * which decrements the Camunda retry counter and ultimately raises a Camunda
+ * incident when no retries remain. This ensures that a failing parallel branch
+ * surfaces as a visible incident rather than silently propagating error text
+ * back to the LLM.</p>
  */
 @Service
 public class WanakuExternalTaskHandler {
@@ -133,11 +142,17 @@ public class WanakuExternalTaskHandler {
         try {
             logger.info("Processing external task: {}", externalTask.getId());
 
-            // Extract input variables
+            // ── Read per-instance variables injected by the BPMN multi-instance mapping ──
+            String callId   = externalTask.getVariable("callId");
             String toolName = externalTask.getVariable("toolName");
             Map<String, Object> toolArgs = externalTask.getVariable("toolArgs");
 
-            // Validate required input
+            // Validate required inputs
+            if (callId == null || callId.isBlank()) {
+                handleFailure(externalTaskService, externalTask,
+                        new IllegalArgumentException("callId is required"));
+                return;
+            }
             if (toolName == null || toolName.trim().isEmpty()) {
                 handleFailure(externalTaskService, externalTask,
                         new IllegalArgumentException("toolName is required"));
@@ -148,12 +163,12 @@ public class WanakuExternalTaskHandler {
                 toolArgs = new HashMap<>();
             }
 
-            // Check if tool exists in registry
+            // Check if tool exists in registry (warn-only; proceed regardless)
             if (!toolRegistryService.toolExists(toolName)) {
                 logger.warn("Tool '{}' not found in Wanaku registry. Attempting execution anyway.", toolName);
             }
 
-            logger.debug("Calling Wanaku tool '{}' with args: {}", toolName, toolArgs);
+            logger.debug("Calling Wanaku tool '{}' (callId='{}') with args: {}", toolName, callId, toolArgs);
 
             // ── Lock-extension heartbeat ──────────────────────────────────────────
             // The Camunda lock has a finite duration (camunda.bpm.client.lock-duration).
@@ -212,24 +227,27 @@ public class WanakuExternalTaskHandler {
                 }
             }
 
-            // Prepare output variables
-            Map<String, Object> variables = new HashMap<>();
-
+            // ── Tool-level MCP error → Camunda incident ───────────────────────────
+            // A tool-level error (CallToolResult.isError() == true) is treated as a
+            // hard failure: we raise a Camunda incident so the failing parallel branch
+            // is visible and does not silently produce bad data in conversationHistory.
             if (result.isError() != null && result.isError()) {
-                // Handle error
                 String errorMessage = extractResultText(result);
-                variables.put("toolResult", null);
-                variables.put("toolError", errorMessage.isEmpty() ? "Unknown error" : errorMessage);
-
-                logger.error("Tool '{}' execution failed: {}", toolName, errorMessage);
-            } else {
-                // Extract result text from content
-                String resultText = extractResultText(result);
-                variables.put("toolResult", resultText);
-                variables.put("toolError", null);
-
-                logger.info("Tool '{}' executed successfully", toolName);
+                if (errorMessage.isEmpty()) {
+                    errorMessage = "Tool '" + toolName + "' returned an error with no message.";
+                }
+                logger.error("Tool '{}' (callId='{}') returned a tool-level error: {}", toolName, callId, errorMessage);
+                handleFailure(externalTaskService, externalTask,
+                        new RuntimeException("Tool error from '" + toolName + "': " + errorMessage));
+                return;
             }
+
+            // ── Success → write indexed result variable ────────────────────────────
+            String resultText = extractResultText(result);
+            logger.info("Tool '{}' (callId='{}') executed successfully", toolName, callId);
+
+            Map<String, Object> variables = new HashMap<>();
+            variables.put("toolResult_" + callId, resultText);
 
             // Complete the external task.
             // Guard against ENGINE-03005: if the lock was reclaimed by the engine

@@ -153,12 +153,19 @@ public class LlmExternalTaskHandler {
             // Parse LLM response to AgentDecision
             AgentDecision decision = parseLlmResponse(llmResponse);
 
+            // Sanitise callIds before writing to Camunda (callId is used as a variable
+            // name suffix, so it must contain only alphanumeric characters and underscores).
+            if (decision.isRequiresTool() && decision.getToolCalls() != null) {
+                for (AgentDecision.ToolCall call : decision.getToolCalls()) {
+                    call.setCallId(sanitiseCallId(call.getCallId()));
+                }
+            }
+
             // Prepare output variables
             Map<String, Object> variables = new HashMap<>();
             variables.put("requiresTool", decision.isRequiresTool());
-            variables.put("toolName", decision.getToolName());
-            variables.put("toolArgs", decision.getToolArgs());
-            variables.put("finalAnswer", decision.getFinalAnswer());
+            variables.put("finalAnswer",  decision.getFinalAnswer());
+            variables.put("toolCalls",    objectMapper.convertValue(decision.getToolCalls(), List.class));
 
             // Complete the external task
             externalTaskService.complete(externalTask, variables);
@@ -227,27 +234,48 @@ public class LlmExternalTaskHandler {
 
     /**
      * Build the system prompt that instructs the LLM on how to respond.
+     *
+     * <p>The prompt teaches the LLM the parallel tool call contract:
+     * independent tools may appear together in {@code toolCalls} and will be
+     * executed in parallel; dependent tools must be split across separate
+     * iterations because each iteration only runs after all tools from the
+     * previous iteration have completed.</p>
      */
     private String buildSystemPrompt(List<ToolMetadata> availableTools) {
         StringBuilder prompt = new StringBuilder();
-        prompt.append(
-                "You are an intelligent agent that helps users by deciding whether to use tools or provide direct answers.\n\n");
-        prompt.append(
-                "Your task is to analyze the user's request and respond with a JSON object in the following format:\n\n");
-        prompt.append("If a tool is needed:\n");
+
+        prompt.append("You are an intelligent agent. Analyze the user's request and respond ");
+        prompt.append("with exactly one of the following two JSON shapes.\n\n");
+
+        prompt.append("── When tool calls are needed ────────────────────────────────────────────────\n");
         prompt.append("{\n");
         prompt.append("  \"requiresTool\": true,\n");
-        prompt.append("  \"toolName\": \"<tool_name>\",\n");
-        prompt.append("  \"toolArgs\": {\"arg1\": \"value1\", \"arg2\": \"value2\"},\n");
+        prompt.append("  \"toolCalls\": [\n");
+        prompt.append("    { \"callId\": \"c1\", \"toolName\": \"<name>\", \"toolArgs\": { ... } },\n");
+        prompt.append("    { \"callId\": \"c2\", \"toolName\": \"<name>\", \"toolArgs\": { ... } }\n");
+        prompt.append("  ],\n");
         prompt.append("  \"finalAnswer\": null\n");
         prompt.append("}\n\n");
-        prompt.append("If no tool is needed (you can answer directly):\n");
+
+        prompt.append("── When no tool is needed (answer directly) ──────────────────────────────────\n");
         prompt.append("{\n");
         prompt.append("  \"requiresTool\": false,\n");
-        prompt.append("  \"toolName\": null,\n");
-        prompt.append("  \"toolArgs\": null,\n");
+        prompt.append("  \"toolCalls\": null,\n");
         prompt.append("  \"finalAnswer\": \"<your answer>\"\n");
         prompt.append("}\n\n");
+
+        prompt.append("PARALLEL TOOL CALL RULES:\n");
+        prompt.append("• You MAY include multiple entries in toolCalls when their inputs are ");
+        prompt.append("completely independent — no tool's output is needed as another's input ");
+        prompt.append("within the SAME list. All entries are executed in parallel.\n");
+        prompt.append("• You MUST NOT include two tools in the same toolCalls list when one ");
+        prompt.append("depends on the other's result. Emit the first tool alone; you will ");
+        prompt.append("receive its result in the next iteration and may then emit the second tool.\n");
+        prompt.append("• Assign each entry a unique callId string (e.g. \"c1\", \"c2\", \"c3\"). ");
+        prompt.append("Use only letters, digits, and underscores in callId.\n");
+        prompt.append("• toolCalls MUST contain at least one entry when requiresTool is true.\n\n");
+
+
 
         if (availableTools != null && !availableTools.isEmpty()) {
             prompt.append("Available tools:\n");
@@ -265,10 +293,40 @@ public class LlmExternalTaskHandler {
             prompt.append("\n");
         }
 
-        prompt.append(
-                "IMPORTANT: Respond ONLY with valid JSON. Do not include any explanatory text before or after the JSON.");
+        prompt.append("IMPORTANT: Respond ONLY with valid JSON. Do not include any text before or after the JSON.");
 
         return prompt.toString();
+    }
+
+    /**
+     * Sanitise a callId produced by the LLM so it is safe to use as part of a
+     * Camunda process variable name (e.g. {@code toolResult_<callId>}).
+     *
+     * <p>Rules applied in order:
+     * <ol>
+     *   <li>Replace every character that is not a letter, digit, or underscore with
+     *       an underscore.</li>
+     *   <li>Strip leading and trailing underscores.</li>
+     *   <li>If the result is empty, generate a unique fallback using the current
+     *       nanosecond timestamp prefixed with {@code "c"}.</li>
+     * </ol>
+     * </p>
+     */
+    private String sanitiseCallId(String callId) {
+        if (callId == null || callId.isBlank()) {
+            logger.warn("LLM produced a null or blank callId — generating a fallback.");
+            return "c" + System.nanoTime();
+        }
+        // Replace every disallowed character with underscore, then strip leading/trailing underscores
+        String sanitised = callId.replaceAll("[^a-zA-Z0-9_]", "_").replaceAll("^_+|_+$", "");
+        if (sanitised.isEmpty()) {
+            logger.warn("callId '{}' became empty after sanitisation — generating a fallback.", callId);
+            return "c" + System.nanoTime();
+        }
+        if (!sanitised.equals(callId)) {
+            logger.debug("callId '{}' sanitised to '{}'", callId, sanitised);
+        }
+        return sanitised;
     }
 
     /**

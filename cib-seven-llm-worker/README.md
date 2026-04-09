@@ -25,7 +25,7 @@ Acts as a **decision engine** for Camunda BPMN processes. It evaluates context, 
 - **External Task Topic**: `llm-decision`
 - **LLM Providers**: Ollama (default), OpenAI
 - **Integration**: Apache Camel `langchain4j-chat` component
-- **Output**: Camunda process variables (`requiresTool`, `toolName`, `toolArgs`, `finalAnswer`)
+- **Output**: Camunda process variables (`requiresTool`, `toolCalls`, `finalAnswer`)
 
 ## Configuration
 
@@ -70,7 +70,7 @@ The worker subscribes to the `llm-decision` external task topic. In your BPMN pr
 
 - **Topic**: `llm-decision`
 - **Input Variables**: `userRequest`, `conversationHistory`, `availableTools`
-- **Output Variables**: `requiresTool`, `toolName`, `toolArgs`, `finalAnswer`
+- **Output Variables**: `requiresTool`, `toolCalls`, `finalAnswer`
 
 ## License
 

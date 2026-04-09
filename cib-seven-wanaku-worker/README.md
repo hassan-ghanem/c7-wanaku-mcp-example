@@ -9,7 +9,7 @@ Executes tools via the **Wanaku MCP Router** for Camunda BPMN processes. Acts as
 ## What It Does
 
 - Connects to Wanaku's MCP Router via Streamable HTTP transport
-- Receives tool execution requests from Camunda (tool name + arguments)
+- Receives tool execution requests via Camunda from a Multi-Instance Service Task (callId + toolName + arguments)
 - Calls tools using the MCP SDK's `callTool()` method
 - Returns tool execution results to the Camunda process
 - Fetches and caches available tools using the MCP SDK's `listTools()` method
@@ -25,7 +25,7 @@ Executes tools via the **Wanaku MCP Router** for Camunda BPMN processes. Acts as
 - **External Task Topics**: `wanaku-tool-execute`, `wanaku-tools-fetch`
 - **MCP Protocol**: Streamable HTTP transport via MCP Java SDK (`io.modelcontextprotocol.sdk:mcp:0.18.0`)
 - **MCP Client**: `McpSyncClient` with `HttpClientStreamableHttpTransport`
-- **Output**: Camunda process variables (`toolResult`, `availableTools`)
+- **Output**: Camunda process variables (`toolResult_<callId>`, `availableTools`)
 
 ## Configuration
 
@@ -66,8 +66,8 @@ The worker subscribes to two external task topics:
 
 ### Tool Execution (`wanaku-tool-execute`)
 
-- **Input Variables**: `toolName`, `toolArgs`
-- **Output Variables**: `toolResult`, `toolError`
+- **Input Variables**: `callId`, `toolName`, `toolArgs` (mapped per-instance)
+- **Output Variables**: `toolResult_<callId>` (errors raise Camunda incidents instead)
 
 ### Tool Catalogue Fetch (`wanaku-tools-fetch`)
 
