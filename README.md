@@ -1,167 +1,232 @@
 # Camunda 7 + Wanaku MCP + Apache Camel + LLM
-### Agentic Tool-Calling with BPMN Orchestration
+### Agentic Tool-Calling with BPMN Orchestration (Parallel Edition)
 
 This repository demonstrates how to orchestrate an **LLM tool-calling agent** using **Camunda Platform 7 (CIB Seven)**, **Wanaku MCP Router**, and **Apache Camel**.
 
-The example implements an **iterative agent loop inside BPMN** where an LLM decides when to call tools and Camunda orchestrates the execution flow.
-
-BPMN provides **full process traceability, retries, incidents, and monitoring**, while the LLM focuses only on reasoning and decision making.
+The implementation now supports **parallel multi-tool execution** using BPMN **Multi-Instance Service Tasks**, enabling the LLM to request multiple tools in a single iteration.
 
 ---
 
-## Architecture Overview
+## Key Enhancement: Parallel Tool Calls
 
-The system combines BPMN orchestration with an LLM decision loop.
+Previously, the agent executed **one tool per iteration**.
+
+Now:
+
+- The LLM can return **multiple tool calls at once**
+- BPMN executes them **in parallel**
+- Results are merged and fed back into the LLM
+- Reduces number of iterations and improves performance
+
+---
+
+## Updated Architecture Overview
 
 ```
 ┌───────────────────────────────────────────────────────────────┐
 │                       Camunda BPMN Process                    │
 │                                                               │
 │  [Fetch Tools] ──► [LLM Decision] ──► gateway                │
-│   wanaku-tools-fetch     llm-decision     requiresTool?       │
-│                                              │ yes   │ no     │
-│                                       [Execute Tool]  │       │
-│                                       wanaku-tool     │       │
-│                                              │        │       │
-│                                   loop back to LLM    │       │
-│                                              │        │       │
-│                                          Final Answer ◄       │
+│                         │                                     │
+│                         ▼                                     │
+│              Multi-Instance Tool Execution (Parallel)         │
+│                         │                                     │
+│                  [Merge Results]                              │
+│                         │                                     │
+│                  Loop back to LLM                             │
+│                         │                                     │
+│                   Final Answer                                │
 └───────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Architecture Components
+## Updated Data Model
 
-### BPMN (Camunda Platform 7)
+### AgentDecision
 
-BPMN orchestrates the agent loop and provides:
+```
+AgentDecision
+├── boolean requiresTool
+├── List<ToolCall> toolCalls
+└── String finalAnswer
+```
 
-- Process orchestration
-- Observability
-- Retry handling
-- Incident management
-- Human intervention when required
+### ToolCall
 
-BPMN also acts as a **common language between business and technical teams**, allowing both groups to understand and discuss the workflow.
+```
+ToolCall
+├── String callId
+├── String toolName
+└── Map<String,Object> toolArgs
+```
 
 ---
 
-### LLM Worker
+## JSON Contract
 
-Responsible for reasoning and deciding the next action.
-
-Output example:
+### Multiple tool calls
 
 ```json
 {
   "requiresTool": true,
-  "toolName": "currency-rate",
-  "toolArgs": {
-    "walletId": 152,
-    "targetCurrency": "USD"
-  }
+  "toolCalls": [
+    { "callId": "c1", "toolName": "searchDatabase", "toolArgs": { "query": "SELECT ..." } },
+    { "callId": "c2", "toolName": "getWeather", "toolArgs": { "city": "Berlin" } }
+  ],
+  "finalAnswer": null
 }
 ```
 
-The BPMN gateway checks `requiresTool` to decide whether to execute a tool or finish the process.
+### Final answer
+
+```json
+{
+  "requiresTool": false,
+  "toolCalls": null,
+  "finalAnswer": "The answer is 42."
+}
+```
 
 ---
 
-### Wanaku MCP Router
+## BPMN Execution Flow (Updated)
 
-Wanaku acts as the **bridge between the LLM and the tool ecosystem**.
-
-It exposes tools through the **Model Context Protocol (MCP)** and allows the agent to discover and execute them dynamically.
-
----
-
-### Apache Camel
-
-Apache Camel handles **enterprise routing and system integration**.
-
-Camel routes can:
-
-- Call APIs
-- Access databases
-- Integrate with enterprise systems
-- Implement business logic
-
-Wanaku exposes these Camel routes as **MCP tools** that the LLM can call.
+1. Fetch available tools from Wanaku
+2. LLM evaluates request
+3. If tools required:
+   - BPMN executes **parallel multi-instance tool calls**
+4. Each tool writes:
+   - `toolResult_{callId}`
+5. Script task merges results into `conversationHistory`
+6. Loop continues until final answer
 
 ---
 
-## External Task Workers
+## Multi-Instance Tool Execution
 
-Two workers are used in the example.
+- Implemented as a **top-level Service Task**
+- Configuration:
+  - `collection = toolCalls`
+  - `elementVariable = currentToolCall`
+  - `parallel = true`
+
+### Per-instance variables
+
+| Variable | Source |
+|----------|--------|
+| callId   | currentToolCall.callId |
+| toolName | currentToolCall.toolName |
+| toolArgs | currentToolCall.toolArgs |
+
+### Output
+
+```
+toolResult_{callId}
+```
+
+---
+
+## Merge Strategy
+
+A **Nashorn JavaScript Script Task**:
+
+- Appends LLM decision to history
+- Appends each tool result as a user message
+- Increments iteration counter
+
+This ensures the LLM receives **full context** in subsequent iterations.
+
+---
+
+## Error Handling
+
+- Tool errors → **Camunda incidents**
+- No `toolError` variable is stored
+- Failed branches stop execution before merge
+
+---
+
+## Updated Variable Flow
+
+| Variable | Description |
+|----------|------------|
+| availableTools | Tools from Wanaku |
+| toolCalls | List of tool calls from LLM |
+| toolResult_{callId} | Result per tool |
+| conversationHistory | Aggregated history |
+| finalAnswer | Final LLM output |
+
+---
+
+## LLM Responsibilities (Updated)
+
+The LLM decides:
+
+### Independent tasks → Parallel
+
+```
+Weather + Product Price → same iteration
+```
+
+### Dependent tasks → Sequential
+
+```
+GetCustomerId → then GetOrders
+```
+
+---
+
+## External Task Workers (Updated)
+
+### LLM Worker
+
+Outputs:
+
+- `requiresTool`
+- `toolCalls`
+- `finalAnswer`
+
+Includes:
+
+- Parallel-aware system prompt
+- callId sanitisation
 
 ---
 
 ### Wanaku Worker
 
-Handles tool discovery and execution.
+Per-instance execution:
 
-| Topic                 | Handler                     | Purpose                       |
-| --------------------- | --------------------------- | ----------------------------- |
-| `wanaku-tools-fetch`  | `WanakuToolsFetchHandler`   | Retrieves available MCP tools |
-| `wanaku-tool-execute` | `WanakuExternalTaskHandler` | Executes selected MCP tool    |
+Reads:
 
----
+- callId
+- toolName
+- toolArgs
 
-### LLM Worker
+Writes:
 
-Handles the reasoning step.
-
-| Topic          | Handler                  |
-| -------------- | ------------------------ |
-| `llm-decision` | `LlmExternalTaskHandler` |
-
-Responsibilities:
-
-- Reads the user request
-- Reads available tools
-- Decides whether a tool is required
-- Returns the decision variables to BPMN
+- `toolResult_{callId}`
 
 ---
 
-## Variable Flow
+## What Was Removed
 
-Main variables used during execution.
-
-| Variable         | Description                              |
-| ---------------- | ---------------------------------------- |
-| `userRequest`    | Original user prompt                     |
-| `availableTools` | List of tools exposed by Wanaku          |
-| `requiresTool`   | Boolean indicating if a tool is required |
-| `toolName`       | Name of tool to execute                  |
-| `toolArgs`       | Tool parameters                          |
-| `toolResult`     | Result returned from tool                |
-| `finalAnswer`    | Final response from the LLM              |
+- Single tool execution model
+- `toolName` (process variable)
+- `toolArgs` (process variable)
+- `toolResult` (single value)
+- `toolError` variable
 
 ---
 
-## Execution Loop
+## Benefits of the New Design
 
-1. BPMN fetches available tools from Wanaku.
-2. LLM evaluates the request.
-3. If a tool is required, BPMN triggers the Wanaku worker.
-4. Wanaku executes the selected MCP tool.
-5. Tool result is returned to the process.
-6. BPMN loops back to the LLM.
-7. Loop continues until `requiresTool = false`.
-
----
-
-## Example Tools
-
-### HTTP Tool
-
-Defined in `currency.json`. Used for retrieving currency information (e.g., `currency-rate`).
-
-### Apache Camel Tools
-
-Defined in `demo.rules.yaml`. These routes expose enterprise integrations as MCP tools.
+- Faster execution (parallel tools)
+- Fewer LLM iterations
+- Cleaner variable model
+- Better scalability
+- Native BPMN parallelism
 
 ---
 
@@ -169,30 +234,15 @@ Defined in `demo.rules.yaml`. These routes expose enterprise integrations as MCP
 
 1. Start Camunda Platform 7
 2. Start Wanaku MCP Router
-3. Start the two workers:
+3. Start workers:
 
 ```
 cib-seven-llm-worker
 cib-seven-wanaku-worker
 ```
 
-4. Deploy the BPMN model.
-5. Start a process instance.
-
----
-
-## Tested Environment
-
-This example has been tested with:
-
-- **Wanaku MCP Router**
-- **Official Camel Integration Capability**
-- **Version 0.0.9**
-
-The following tools were added to the Wanaku toolset:
-
-- HTTP currency tool defined in `currency.json`
-- Camel tools defined in `demo.rules.yaml`
+4. Deploy BPMN model
+5. Start process instance
 
 ---
 
@@ -213,13 +263,7 @@ wanaku/
 
 ---
 
-## Demonstration
+## Summary
 
-A **short silent clip** demonstrating the example execution is attached to this repository.
+This update transforms the agent from a **sequential tool executor** into a **parallel, multi-tool orchestration system**, fully leveraging BPMN capabilities while keeping the LLM focused on decision-making.
 
-The clip shows:
-
-- BPMN process execution
-- LLM decision loop
-- Tool invocation through Wanaku
-- Final response generation
