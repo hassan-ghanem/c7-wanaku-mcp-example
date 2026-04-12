@@ -46,9 +46,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
  *
  * <h3>Input Variables (from BPMN multi-instance element variable mapping)</h3>
  * <ul>
- * <li>{@code callId}  (String, required): Sanitised unique identifier for this
- *     tool call within the current iteration. Used as the suffix of the output
- *     variable names.</li>
+ * <li>{@code callId} (String, required): Sanitised unique identifier for this
+ * tool call within the current iteration. Used as the suffix of the output
+ * variable names.</li>
  * <li>{@code toolName} (String, required): Name of the tool to execute.</li>
  * <li>{@code toolArgs} (Map, optional): Arguments to pass to the tool.</li>
  * </ul>
@@ -56,16 +56,18 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * <h3>Output Variables (written to process scope per instance)</h3>
  * <ul>
  * <li>{@code toolResult_<callId>} (String): Concatenated text result from the
- *     MCP tool. Empty string if the tool returns no text content.</li>
+ * MCP tool. Empty string if the tool returns no text content.</li>
  * </ul>
  *
  * <h3>Error Behaviour</h3>
- * <p>A tool-level MCP error ({@code CallToolResult.isError() == true}) is
+ * <p>
+ * A tool-level MCP error ({@code CallToolResult.isError() == true}) is
  * treated the same as a transport exception: {@code handleFailure()} is called,
  * which decrements the Camunda retry counter and ultimately raises a Camunda
  * incident when no retries remain. This ensures that a failing parallel branch
  * surfaces as a visible incident rather than silently propagating error text
- * back to the LLM.</p>
+ * back to the LLM.
+ * </p>
  */
 @Service
 public class WanakuExternalTaskHandler {
@@ -85,6 +87,8 @@ public class WanakuExternalTaskHandler {
 
     private final String baseUrl;
 
+    private final String workerId;
+
     private final int asyncResponseTimeout;
 
     private final int lockDuration;
@@ -97,12 +101,14 @@ public class WanakuExternalTaskHandler {
 
     public WanakuExternalTaskHandler(
             @Value("${camunda.bpm.client.base-url}") String baseUrl,
+            @Value("${camunda.bpm.client.worker-id}") String workerId,
             @Value("${camunda.bpm.client.async-response-timeout}") int asyncResponseTimeout,
             @Value("${camunda.bpm.client.lock-duration}") int lockDuration,
             WanakuProperties wanakuProperties,
             McpSyncClient mcpClient,
             WanakuToolRegistryService toolRegistryService) {
         this.baseUrl = baseUrl;
+        this.workerId = workerId;
         this.asyncResponseTimeout = asyncResponseTimeout;
         this.lockDuration = lockDuration;
         this.wanakuProperties = wanakuProperties;
@@ -127,6 +133,7 @@ public class WanakuExternalTaskHandler {
 
         ExternalTaskClient client = ExternalTaskClient.create()
                 .baseUrl(baseUrl)
+                .workerId(workerId)
                 .asyncResponseTimeout(asyncResponseTimeout)
                 .build();
 
@@ -143,7 +150,7 @@ public class WanakuExternalTaskHandler {
             logger.info("Processing external task: {}", externalTask.getId());
 
             // ── Read per-instance variables injected by the BPMN multi-instance mapping ──
-            String callId   = externalTask.getVariable("callId");
+            String callId = externalTask.getVariable("callId");
             String toolName = externalTask.getVariable("toolName");
             Map<String, Object> toolArgs = externalTask.getVariable("toolArgs");
 

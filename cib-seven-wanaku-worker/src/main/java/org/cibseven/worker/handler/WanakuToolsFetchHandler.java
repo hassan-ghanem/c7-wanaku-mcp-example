@@ -21,30 +21,44 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * External task worker that exposes the Wanaku tool registry as a Camunda process variable.
+ * External task worker that exposes the Wanaku tool registry as a Camunda
+ * process variable.
  * Subscribes to the {@code wanaku-tools-fetch} topic (configurable via
  * {@code wanaku.tools-fetch-topic}).
  *
- * <p>When a BPMN process reaches a service task with this topic, the handler reads the
+ * <p>
+ * When a BPMN process reaches a service task with this topic, the handler reads
+ * the
  * in-memory tool cache from {@link WanakuToolRegistryService}, serialises each
- * {@link ToolMetadata} entry to a plain {@code Map<String, Object>}, and writes the
- * resulting list as the {@code availableTools} process variable.  The variable is consumed
- * downstream by the {@code llm-decision} service task so that the LLM knows which tools
- * it may call.</p>
+ * {@link ToolMetadata} entry to a plain {@code Map<String, Object>}, and writes
+ * the
+ * resulting list as the {@code availableTools} process variable. The variable
+ * is consumed
+ * downstream by the {@code llm-decision} service task so that the LLM knows
+ * which tools
+ * it may call.
+ * </p>
  *
- * <p>The handler can be disabled independently of the tool-execution handler by setting
+ * <p>
+ * The handler can be disabled independently of the tool-execution handler by
+ * setting
  * {@code wanaku.tools-fetch-enabled=false} in {@code application.yaml}.
- * Setting {@code wanaku.enabled=false} disables the entire worker including this handler.</p>
+ * Setting {@code wanaku.enabled=false} disables the entire worker including
+ * this handler.
+ * </p>
  *
  * <h3>Input Variables (from Camunda process)</h3>
- * <p>None required.</p>
+ * <p>
+ * None required.
+ * </p>
  *
  * <h3>Output Variables (to Camunda process)</h3>
  * <ul>
- *   <li>{@code availableTools} (List&lt;Map&gt;): Serialised list of available tool
- *       metadata, each entry containing {@code name}, {@code description}, and
- *       optionally {@code inputSchema}.  Compatible with
- *       {@code LlmExternalTaskHandler.convertToToolMetadata()}.</li>
+ * <li>{@code availableTools} (List&lt;Map&gt;): Serialised list of available
+ * tool
+ * metadata, each entry containing {@code name}, {@code description}, and
+ * optionally {@code inputSchema}. Compatible with
+ * {@code LlmExternalTaskHandler.convertToToolMetadata()}.</li>
  * </ul>
  */
 @Service
@@ -53,6 +67,8 @@ public class WanakuToolsFetchHandler {
     private static final Logger logger = LoggerFactory.getLogger(WanakuToolsFetchHandler.class);
 
     private final String baseUrl;
+
+    private final String workerId;
 
     private final int asyncResponseTimeout;
 
@@ -66,12 +82,14 @@ public class WanakuToolsFetchHandler {
 
     public WanakuToolsFetchHandler(
             @Value("${camunda.bpm.client.base-url}") String baseUrl,
+            @Value("${camunda.bpm.client.worker-id}") String workerId,
             @Value("${camunda.bpm.client.async-response-timeout}") int asyncResponseTimeout,
             @Value("${camunda.bpm.client.lock-duration}") int lockDuration,
             WanakuProperties wanakuProperties,
             WanakuToolRegistryService toolRegistryService,
             ObjectMapper objectMapper) {
         this.baseUrl = baseUrl;
+        this.workerId = workerId;
         this.asyncResponseTimeout = asyncResponseTimeout;
         this.lockDuration = lockDuration;
         this.wanakuProperties = wanakuProperties;
@@ -80,7 +98,8 @@ public class WanakuToolsFetchHandler {
     }
 
     /**
-     * Subscribe to the tools-fetch external task topic after the application is fully ready.
+     * Subscribe to the tools-fetch external task topic after the application is
+     * fully ready.
      * This ensures the tool registry has already performed its initial fetch.
      */
     @EventListener(ApplicationReadyEvent.class)
@@ -103,6 +122,7 @@ public class WanakuToolsFetchHandler {
 
         ExternalTaskClient client = ExternalTaskClient.create()
                 .baseUrl(baseUrl)
+                .workerId(workerId)
                 .asyncResponseTimeout(asyncResponseTimeout)
                 .build();
 
@@ -133,12 +153,14 @@ public class WanakuToolsFetchHandler {
             logger.debug("Serialising {} tool(s) into availableTools process variable", tools.size());
 
             // Serialise each ToolMetadata to Map<String, Object> so Camunda can store it as
-            // a plain spin/JSON variable.  LlmExternalTaskHandler.convertToToolMetadata()
-            // deserialises this back via objectMapper.convertValue(rawTool, ToolMetadata.class).
+            // a plain spin/JSON variable. LlmExternalTaskHandler.convertToToolMetadata()
+            // deserialises this back via objectMapper.convertValue(rawTool,
+            // ToolMetadata.class).
             List<Map<String, Object>> availableTools = new ArrayList<>(tools.size());
             for (ToolMetadata tool : tools) {
                 Map<String, Object> toolMap = objectMapper.convertValue(
-                        tool, new TypeReference<Map<String, Object>>() {});
+                        tool, new TypeReference<Map<String, Object>>() {
+                        });
                 availableTools.add(toolMap);
             }
 
@@ -160,10 +182,9 @@ public class WanakuToolsFetchHandler {
      * Handle task failure by reporting the error back to Camunda.
      */
     private void handleFailure(ExternalTaskService externalTaskService,
-                                ExternalTask externalTask,
-                                Exception e) {
+            ExternalTask externalTask,
+            Exception e) {
         String errorMessage = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
         externalTaskService.handleFailure(externalTask, errorMessage, null, 0, 0);
     }
 }
-

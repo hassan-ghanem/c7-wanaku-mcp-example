@@ -68,6 +68,8 @@ public class LlmExternalTaskHandler {
 
     private final String baseUrl;
 
+    private final String workerId;
+
     private final int asyncResponseTimeout;
 
     private final int lockDuration;
@@ -80,12 +82,14 @@ public class LlmExternalTaskHandler {
 
     public LlmExternalTaskHandler(
             @Value("${camunda.bpm.client.base-url}") String baseUrl,
+            @Value("${camunda.bpm.client.worker-id}") String workerId,
             @Value("${camunda.bpm.client.async-response-timeout}") int asyncResponseTimeout,
             @Value("${camunda.bpm.client.lock-duration}") int lockDuration,
             LlmProperties llmProperties,
             ProducerTemplate producerTemplate,
             ObjectMapper objectMapper) {
         this.baseUrl = baseUrl;
+        this.workerId = workerId;
         this.asyncResponseTimeout = asyncResponseTimeout;
         this.lockDuration = lockDuration;
         this.llmProperties = llmProperties;
@@ -110,6 +114,7 @@ public class LlmExternalTaskHandler {
 
         ExternalTaskClient client = ExternalTaskClient.create()
                 .baseUrl(baseUrl)
+                .workerId(workerId)
                 .asyncResponseTimeout(asyncResponseTimeout)
                 .build();
 
@@ -154,7 +159,8 @@ public class LlmExternalTaskHandler {
             AgentDecision decision = parseLlmResponse(llmResponse);
 
             // Sanitise callIds before writing to Camunda (callId is used as a variable
-            // name suffix, so it must contain only alphanumeric characters and underscores).
+            // name suffix, so it must contain only alphanumeric characters and
+            // underscores).
             if (decision.isRequiresTool() && decision.getToolCalls() != null) {
                 for (AgentDecision.ToolCall call : decision.getToolCalls()) {
                     call.setCallId(sanitiseCallId(call.getCallId()));
@@ -164,8 +170,8 @@ public class LlmExternalTaskHandler {
             // Prepare output variables
             Map<String, Object> variables = new HashMap<>();
             variables.put("requiresTool", decision.isRequiresTool());
-            variables.put("finalAnswer",  decision.getFinalAnswer());
-            variables.put("toolCalls",    objectMapper.convertValue(decision.getToolCalls(), List.class));
+            variables.put("finalAnswer", decision.getFinalAnswer());
+            variables.put("toolCalls", objectMapper.convertValue(decision.getToolCalls(), List.class));
 
             // Complete the external task
             externalTaskService.complete(externalTask, variables);
@@ -235,11 +241,13 @@ public class LlmExternalTaskHandler {
     /**
      * Build the system prompt that instructs the LLM on how to respond.
      *
-     * <p>The prompt teaches the LLM the parallel tool call contract:
+     * <p>
+     * The prompt teaches the LLM the parallel tool call contract:
      * independent tools may appear together in {@code toolCalls} and will be
      * executed in parallel; dependent tools must be split across separate
      * iterations because each iteration only runs after all tools from the
-     * previous iteration have completed.</p>
+     * previous iteration have completed.
+     * </p>
      */
     private String buildSystemPrompt(List<ToolMetadata> availableTools) {
         StringBuilder prompt = new StringBuilder();
@@ -275,8 +283,6 @@ public class LlmExternalTaskHandler {
         prompt.append("Use only letters, digits, and underscores in callId.\n");
         prompt.append("• toolCalls MUST contain at least one entry when requiresTool is true.\n\n");
 
-
-
         if (availableTools != null && !availableTools.isEmpty()) {
             prompt.append("Available tools:\n");
             for (ToolMetadata tool : availableTools) {
@@ -302,13 +308,14 @@ public class LlmExternalTaskHandler {
      * Sanitise a callId produced by the LLM so it is safe to use as part of a
      * Camunda process variable name (e.g. {@code toolResult_<callId>}).
      *
-     * <p>Rules applied in order:
+     * <p>
+     * Rules applied in order:
      * <ol>
-     *   <li>Replace every character that is not a letter, digit, or underscore with
-     *       an underscore.</li>
-     *   <li>Strip leading and trailing underscores.</li>
-     *   <li>If the result is empty, generate a unique fallback using the current
-     *       nanosecond timestamp prefixed with {@code "c"}.</li>
+     * <li>Replace every character that is not a letter, digit, or underscore with
+     * an underscore.</li>
+     * <li>Strip leading and trailing underscores.</li>
+     * <li>If the result is empty, generate a unique fallback using the current
+     * nanosecond timestamp prefixed with {@code "c"}.</li>
      * </ol>
      * </p>
      */
@@ -317,7 +324,8 @@ public class LlmExternalTaskHandler {
             logger.warn("LLM produced a null or blank callId — generating a fallback.");
             return "c" + System.nanoTime();
         }
-        // Replace every disallowed character with underscore, then strip leading/trailing underscores
+        // Replace every disallowed character with underscore, then strip
+        // leading/trailing underscores
         String sanitised = callId.replaceAll("[^a-zA-Z0-9_]", "_").replaceAll("^_+|_+$", "");
         if (sanitised.isEmpty()) {
             logger.warn("callId '{}' became empty after sanitisation — generating a fallback.", callId);
