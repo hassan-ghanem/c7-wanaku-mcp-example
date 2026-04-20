@@ -9,7 +9,7 @@
       <bpmn:extensionElements>
         <camunda:executionListener expression="#{execution.setVariable(&#34;userRequest&#34;, execution.hasVariable(&#34;initialRequest&#34;) ? execution.getVariable(&#34;initialRequest&#34;) : &#34;A client just submitted a payment for $850. Can you let me know if this has been approved?&#34;)}" event="start" />
         <camunda:executionListener expression="#{execution.setVariable(&#34;conversationHistory&#34;, null)}" event="start" />
-        <camunda:executionListener expression="#{execution.setVariable(&#34;max&#34;, 5)}" event="start" />
+        <camunda:executionListener expression="#{execution.setVariable(&#34;max&#34;, 10)}" event="start" />
       </bpmn:extensionElements>
       <bpmn:outgoing>Flow_0rfh4sv</bpmn:outgoing>
     </bpmn:startEvent>
@@ -77,12 +77,23 @@ if (toolCalls != null) {
         var callId   = call.get("callId");
         var toolName = call.get("toolName");
 
-        var result = execution.getVariable("toolResult_" + callId);
-        var rawResult = (result != null) ? result : "(no output)";
+        var resultVar = "toolResult_" + callId;
+        var raw       = execution.getVariable(resultVar);
+
+        var resultStr;
+        if (raw === null || raw === undefined) {
+            resultStr = "No result returned";
+        } else if (typeof raw === "string" || raw instanceof java.lang.String) {
+            resultStr = raw;
+        } else {
+            var JString = Java.type("java.lang.String");
+            var StandardCharsets = Java.type("java.nio.charset.StandardCharsets");
+            resultStr = new JString(raw, StandardCharsets.UTF_8);
+        }
 
         var userMsg = new HashMap();
         userMsg.put("role", "user");
-        userMsg.put("content", "[Tool " + callId + " " + toolName + " result]: " + rawResult);
+        userMsg.put("content", "[Tool " + callId + " " + toolName + " result]: " + resultStr);
         historyList.add(userMsg);
     }
 }
@@ -153,15 +164,8 @@ execution.setVariable("iteration", currentIteration + 1);</bpmn:script>
           <dc:Bounds x="680" y="193" width="81" height="14" />
         </bpmndi:BPMNLabel>
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Gateway_14i9185_di" bpmnElement="Gateway_14i9185" isMarkerVisible="true">
-        <dc:Bounds x="425" y="205" width="50" height="50" />
-      </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="MergeToolResultsTask_di" bpmnElement="MergeToolResultsTask">
         <dc:Bounds x="1170" y="190" width="100" height="80" />
-        <bpmndi:BPMNLabel />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="BPMNShape_0vqd4h8" bpmnElement="CallMCPToolTask">
-        <dc:Bounds x="940" y="190" width="100" height="80" />
         <bpmndi:BPMNLabel />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Activity_1hvgx0g_di" bpmnElement="DisplayResultTask">
@@ -170,6 +174,13 @@ execution.setVariable("iteration", currentIteration + 1);</bpmn:script>
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Event_1us5n1r_di" bpmnElement="Event_1us5n1r">
         <dc:Bounds x="1092" y="352" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gateway_14i9185_di" bpmnElement="Gateway_14i9185" isMarkerVisible="true">
+        <dc:Bounds x="425" y="205" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_0vqd4h8" bpmnElement="CallMCPToolTask">
+        <dc:Bounds x="940" y="190" width="100" height="80" />
+        <bpmndi:BPMNLabel />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNEdge id="Flow_0rfh4sv_di" bpmnElement="Flow_0rfh4sv">
         <di:waypoint x="188" y="230" />
