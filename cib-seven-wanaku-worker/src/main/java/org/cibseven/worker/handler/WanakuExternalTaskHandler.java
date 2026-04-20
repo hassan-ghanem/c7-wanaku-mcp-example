@@ -8,6 +8,7 @@ import org.cibseven.bpm.client.ExternalTaskClient;
 import org.cibseven.bpm.client.exception.EngineException;
 import org.cibseven.bpm.client.task.ExternalTask;
 import org.cibseven.bpm.client.task.ExternalTaskService;
+import org.cibseven.bpm.engine.variable.Variables;
 import org.cibseven.worker.config.WanakuProperties;
 import org.cibseven.worker.service.WanakuToolRegistryService;
 import org.slf4j.Logger;
@@ -19,6 +20,7 @@ import org.springframework.stereotype.Service;
 
 import jakarta.annotation.PreDestroy;
 
+import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.Executors;
@@ -254,7 +256,15 @@ public class WanakuExternalTaskHandler {
             logger.info("Tool '{}' (callId='{}') executed successfully", toolName, callId);
 
             Map<String, Object> variables = new HashMap<>();
-            variables.put("toolResult_" + callId, resultText);
+
+            // Store as bytes if resultText is large to overcome the database VARCHAR 4000
+            // length limit
+            if (resultText.length() > 3500) {
+                variables.put("toolResult_" + callId,
+                        Variables.byteArrayValue(resultText.getBytes(StandardCharsets.UTF_8)));
+            } else {
+                variables.put("toolResult_" + callId, Variables.stringValue(resultText));
+            }
 
             // Complete the external task.
             // Guard against ENGINE-03005: if the lock was reclaimed by the engine
